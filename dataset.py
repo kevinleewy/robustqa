@@ -1,23 +1,42 @@
 # Standard imports
-import csv
 import json
 import os
+from pathlib import Path
+from collections import defaultdict as ddict
 
 # 3rd Party imports
-from transformers import DistilBertTokenizerFast
-from transformers import DistilBertForQuestionAnswering
+import torch
+from torch.utils.data import Dataset
 from tqdm import tqdm
 
-import torch
-from torch.utils.data import DataLoader
-from torch.utils.data.sampler import RandomSampler, SequentialSampler
-
-
 # Local imports
-from args import get_train_test_args
-from dataset import get_dataset
-from trainer import Trainer
 import util
+
+class QADataset(Dataset):
+    def __init__(self, encodings, train=True):
+        self.encodings = encodings
+        self.keys = ['input_ids', 'attention_mask']
+        if train:
+            self.keys += ['start_positions', 'end_positions']
+        assert(all(key in self.encodings for key in self.keys))
+
+    def __getitem__(self, idx):
+        return {key : torch.tensor(self.encodings[key][idx]) for key in self.keys}
+
+    def __len__(self):
+        return len(self.encodings['input_ids'])
+
+def get_dataset(args, datasets, data_dir, tokenizer, split_name):
+    datasets = datasets.split(',')
+    dataset_dict = None
+    dataset_name=''
+    for dataset in datasets:
+        dataset_name += f'_{dataset}'
+        dataset_dict_curr = read_squad(f'{data_dir}/{dataset}')
+        dataset_dict = util.merge(dataset_dict, dataset_dict_curr)
+    data_encodings = read_and_process(args, tokenizer, dataset_dict, data_dir, dataset_name, split_name)
+    return QADataset(data_encodings, train=(split_name=='train')), dataset_dict
+
 
 def prepare_eval_data(dataset_dict, tokenizer):
     tokenized_examples = tokenizer(dataset_dict['question'],
@@ -49,6 +68,7 @@ def prepare_eval_data(dataset_dict, tokenizer):
         ]
 
     return tokenized_examples
+
 
 
 def prepare_train_data(dataset_dict, tokenizer):
@@ -117,8 +137,6 @@ def prepare_train_data(dataset_dict, tokenizer):
     print(f"Preprocessing not completely accurate for {inaccurate}/{total} instances")
     return tokenized_examples
 
-
-
 def read_and_process(args, tokenizer, dataset_dict, dir_name, dataset_name, split):
     #TODO: cache this if possible
     cache_path = f'{dir_name}/{dataset_name}_encodings.pt'
@@ -132,66 +150,41 @@ def read_and_process(args, tokenizer, dataset_dict, dir_name, dataset_name, spli
         util.save_pickle(tokenized_examples, cache_path)
     return tokenized_examples
 
-def main():
-    # define parser and arguments
-    args = get_train_test_args()
 
-    util.set_seed(args.seed)
+def read_squad(path):
+    path = Path(path)
+    with open(path, 'rb') as f:
+        squad_dict = json.load(f)
+    data_dict = {'question': [], 'context': [], 'id': [], 'answer': []}
+    for group in squad_dict['data']:
+        for passage in group['paragraphs']:
+            context = passage['context']
+            for qa in passage['qas']:
+                question = qa['question']
+                if len(qa['answers']) == 0:
+                    data_dict['question'].append(question)
+                    data_dict['context'].append(context)
+                    data_dict['id'].append(qa['id'])
+                else:
+                    for answer in  qa['answers']:
+                        data_dict['question'].append(question)
+                        data_dict['context'].append(context)
+                        data_dict['id'].append(qa['id'])
+                        data_dict['answer'].append(answer)
+    id_map = ddict(list)
+    for idx, qid in enumerate(data_dict['id']):
+        id_map[qid].append(idx)
 
-    # Determine device
-    args.device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-
-    
-    tokenizer = DistilBertTokenizerFast.from_pretrained('distilbert-base-uncased')
-
-    if args.do_train:
-
-        model = DistilBertForQuestionAnswering.from_pretrained("distilbert-base-uncased")
-
-        if not os.path.exists(args.save_dir):
-            os.makedirs(args.save_dir)
-        args.save_dir = util.get_save_dir(args.save_dir, args.run_name)
-        log = util.get_logger(args.save_dir, 'log_train')
-        log.info(f'Args: {json.dumps(vars(args), indent=4, sort_keys=True)}')
-        log.info("Preparing Training Data...")
-
-        trainer = Trainer(args, log)
-        train_dataset, _ = get_dataset(args, args.train_datasets, args.train_dir, tokenizer, 'train')
-        log.info("Preparing Validation Data...")
-        val_dataset, val_dict = get_dataset(args, args.train_datasets, args.val_dir, tokenizer, 'val')
-        train_loader = DataLoader(train_dataset,
-                                batch_size=args.batch_size,
-                                sampler=RandomSampler(train_dataset))
-        val_loader = DataLoader(val_dataset,
-                                batch_size=args.batch_size,
-                                sampler=SequentialSampler(val_dataset))
-        best_scores = trainer.train(model, train_loader, val_loader, val_dict)
-
-    if args.do_eval:
-        split_name = 'test' if 'test' in args.eval_dir else 'validation'
-        log = util.get_logger(args.save_dir, f'log_{split_name}')
-        trainer = Trainer(args, log)
-        checkpoint_path = os.path.join(args.save_dir, 'checkpoint')
-        model = DistilBertForQuestionAnswering.from_pretrained(checkpoint_path)
-        model.to(args.device)
-        eval_dataset, eval_dict = get_dataset(args, args.eval_datasets, args.eval_dir, tokenizer, split_name)
-        eval_loader = DataLoader(eval_dataset,
-                                 batch_size=args.batch_size,
-                                 sampler=SequentialSampler(eval_dataset))
-        eval_preds, eval_scores = trainer.evaluate(model, eval_loader,
-                                                   eval_dict, return_preds=True,
-                                                   split=split_name)
-        results_str = ', '.join(f'{k}: {v:05.2f}' for k, v in eval_scores.items())
-        log.info(f'Eval {results_str}')
-        # Write submission file
-        sub_path = os.path.join(args.save_dir, split_name + '_' + args.sub_file)
-        log.info(f'Writing submission file to {sub_path}...')
-        with open(sub_path, 'w', newline='', encoding='utf-8') as csv_fh:
-            csv_writer = csv.writer(csv_fh, delimiter=',')
-            csv_writer.writerow(['Id', 'Predicted'])
-            for uuid in sorted(eval_preds):
-                csv_writer.writerow([uuid, eval_preds[uuid]])
-
-
-if __name__ == '__main__':
-    main()
+    data_dict_collapsed = {'question': [], 'context': [], 'id': []}
+    if data_dict['answer']:
+        data_dict_collapsed['answer'] = []
+    for qid in id_map:
+        ex_ids = id_map[qid]
+        data_dict_collapsed['question'].append(data_dict['question'][ex_ids[0]])
+        data_dict_collapsed['context'].append(data_dict['context'][ex_ids[0]])
+        data_dict_collapsed['id'].append(qid)
+        if data_dict['answer']:
+            all_answers = [data_dict['answer'][idx] for idx in ex_ids]
+            data_dict_collapsed['answer'].append({'answer_start': [answer['answer_start'] for answer in all_answers],
+                                                  'text': [answer['text'] for answer in all_answers]})
+    return data_dict_collapsed
