@@ -110,7 +110,8 @@ class Trainer():
                     
                     # Zero out gradients
                     qa_optim.zero_grad()
-                    dis_optim.zero_grad()
+                    if self.adversarial:
+                        dis_optim.zero_grad()
 
                     # Set models to train mode
                     model.train()
