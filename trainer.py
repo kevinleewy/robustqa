@@ -1,11 +1,17 @@
-import os
+# Standard imports
 from collections import OrderedDict
-import torch
-import util
-from transformers import AdamW
-from tensorboardX import SummaryWriter
+import os
 
+# 3rd Party imports
+from tensorboardX import SummaryWriter
+from transformers import AdamW
+import torch
+import torch.nn as nn
 from tqdm import tqdm
+
+# Local imports
+from model import Discriminator
+import util
 
 #TODO: use a logger, use tensorboard
 class Trainer():
@@ -19,6 +25,21 @@ class Trainer():
         self.save_dir = args.save_dir
         self.log = log
         self.visualize_predictions = args.visualize_predictions
+
+        # Adversarial training
+        self.adversarial = args.adversarial
+        self.num_classes = len(args.train_datasets)
+        self.dis_lambda = args.dis_lambda
+        self.anneal = args.anneal
+        self.concat = args.concat
+        self.sep_id = 102
+        if args.adversarial:
+            if args.concat:
+                input_size = 2 * args.hidden_size
+            else:
+                input_size = args.hidden_size
+            self.discriminator = Discriminator(self.num_classes, input_size, args.hidden_size, args.num_layers, args.dropout)
+
         if not os.path.exists(self.path):
             os.makedirs(self.path)
 
@@ -29,6 +50,10 @@ class Trainer():
         device = self.device
 
         model.eval()
+
+        if self.adversarial:
+            self.discriminator.eval()
+
         pred_dict = {}
         all_start_logits = []
         all_end_logits = []
@@ -40,6 +65,7 @@ class Trainer():
                 attention_mask = batch['attention_mask'].to(device)
                 batch_size = len(input_ids)
                 outputs = model(input_ids, attention_mask=attention_mask)
+
                 # Forward
                 start_logits, end_logits = outputs.start_logits, outputs.end_logits
                 # TODO: compute loss
@@ -69,7 +95,10 @@ class Trainer():
     def train(self, model, train_dataloader, eval_dataloader, val_dict):
         device = self.device
         model.to(device)
-        optim = AdamW(model.parameters(), lr=self.lr)
+        qa_optim = AdamW(model.parameters(), lr=self.lr)
+        if self.adversarial:
+            dis_optim = AdamW(self.discriminator.parameters(), lr=self.lr)
+            dis_lambda = self.dis_lambda
         global_idx = 0
         best_scores = {'F1': -1.0, 'EM': -1.0}
         tbx = SummaryWriter(self.save_dir)
@@ -78,21 +107,102 @@ class Trainer():
             self.log.info(f'Epoch: {epoch_num}')
             with torch.enable_grad(), tqdm(total=len(train_dataloader.dataset)) as progress_bar:
                 for batch in train_dataloader:
-                    optim.zero_grad()
+                    
+                    # Zero out gradients
+                    qa_optim.zero_grad()
+                    dis_optim.zero_grad()
+
+                    # Set models to train mode
                     model.train()
+                    if self.adversarial:
+                        self.discriminator.train()
+
+                    # Unpack data
                     input_ids = batch['input_ids'].to(device)
                     attention_mask = batch['attention_mask'].to(device)
                     start_positions = batch['start_positions'].to(device)
                     end_positions = batch['end_positions'].to(device)
+                    dataset_ids = batch['dataset_ids'].to(device)
+
+                    # Forward pass
                     outputs = model(input_ids, attention_mask=attention_mask,
                                     start_positions=start_positions,
-                                    end_positions=end_positions)
-                    loss = outputs[0]
-                    loss.backward()
-                    optim.step()
+                                    end_positions=end_positions, output_hidden_states=True)
+                    
+                    # ((batch_size, sequence_length, hidden_size))
+                    # [torch.Size([16, 384, 768]), torch.Size([16, 384, 768]), torch.Size([16, 384, 768]), torch.Size([16, 384, 768]), torch.Size([16, 384, 768]), torch.Size([16, 384, 768]), torch.Size([16, 384, 768])]
+                    # outputs.hidden_states
+
+                    # Compute QA Loss
+                    qa_loss = outputs.loss
+
+                    if self.adversarial:
+
+                        # (batch_size, hidden_size=768)
+                        cls_embedding = outputs.hidden_states[-1][:, 0, :]
+
+                        if self.concat:
+                            batch_size = input_ids.size(0)
+                            sep_idx = (input_ids == self.sep_id).sum(1)
+                            sep_embedding = outputs.hidden_states[torch.arange(batch_size), sep_idx]
+                            dis_input = torch.cat([cls_embedding, sep_embedding], dim=-1)  # [b, 2*d]
+                        else:
+                            dis_input = cls_embedding
+                        log_prob = self.discriminator(dis_input.detach())
+                        
+                        # KL Divergence Loss
+                        targets = torch.ones_like(log_prob) * (1 / self.discriminator.num_classes)
+                        kl_criterion = nn.KLDivLoss(reduction="batchmean")
+                        if self.anneal:
+                            dis_lambda *= util.kl_coef(global_idx)
+                        qa_loss += dis_lambda * kl_criterion(log_prob, targets)
+
+                    # Backprop
+                    qa_loss.backward()
+                    qa_optim.step()
+                    qa_optim.zero_grad()
+
+                    if self.adversarial:
+
+                        with torch.no_grad():
+                            # Forward pass
+                            outputs = model(input_ids, attention_mask=attention_mask,
+                                            start_positions=start_positions,
+                                            end_positions=end_positions, output_hidden_states=True)
+
+                            # (batch_size, hidden_size=768)
+                            cls_embedding = outputs.hidden_states[-1][:, 0, :]
+
+                            if self.concat:
+                                batch_size = input_ids.size(0)
+                                sep_idx = (input_ids == self.sep_id).sum(1)
+                                sep_embedding = outputs.hidden_states[torch.arange(batch_size), sep_idx]
+                                dis_input = torch.cat([cls_embedding, sep_embedding], dim=-1)  # [b, 2*d]
+                            else:
+                                dis_input = cls_embedding
+                        log_prob = self.discriminator(dis_input.detach())
+
+                        # Compute discriminator loss
+                        criterion = nn.NLLLoss()
+                        dis_loss = criterion(log_prob, dataset_ids)
+                        
+                        # Backprop discriminator
+                        dis_loss.backward()
+                        dis_optim.step()
+                        dis_optim.zero_grad()
+
                     progress_bar.update(len(input_ids))
-                    progress_bar.set_postfix(epoch=epoch_num, NLL=loss.item())
-                    tbx.add_scalar('train/NLL', loss.item(), global_idx)
+                    
+                    if self.adversarial:
+                        progress_bar.set_postfix(epoch=epoch_num, NLL=qa_loss.item(), D_Loss=dis_loss.item())
+                    else:
+                        progress_bar.set_postfix(epoch=epoch_num, NLL=qa_loss.item())
+                    
+                    # TensorboardX update
+                    tbx.add_scalar('train/NLL', qa_loss.item(), global_idx)
+                    if self.adversarial:
+                        tbx.add_scalar('train/D_Loss', dis_loss.item(), global_idx)
+
                     if (global_idx % self.eval_every) == 0:
                         self.log.info(f'Evaluating at step {global_idx}...')
                         preds, curr_score = self.evaluate(model, eval_dataloader, val_dict, return_preds=True)

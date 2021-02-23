@@ -22,5 +22,15 @@ def get_train_test_args():
     parser.add_argument('--sub-file', type=str, default='')
     parser.add_argument('--visualize-predictions', action='store_true')
     parser.add_argument('--eval-every', type=int, default=5000)
+
+    # For adversarial learning
+    parser.add_argument('--adversarial', action='store_true', help="Use adversarial training")
+    parser.add_argument("--dis_lambda", default=0.01, type=float, help="Importance of adversarial loss")
+    parser.add_argument("--hidden_size", default=768, type=int, help="Hidden size for discriminator")
+    parser.add_argument("--num_layers", default=3, type=int, help="Number of layers for discriminator")
+    parser.add_argument("--dropout", default=0.1, type=float, help="Dropout for discriminator")
+    parser.add_argument("--anneal", action="store_true")
+    parser.add_argument("--concat", action="store_true", help="Whether to use both cls and sep embedding")
+    
     args = parser.parse_args()
     return args

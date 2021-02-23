@@ -15,7 +15,7 @@ import util
 class QADataset(Dataset):
     def __init__(self, encodings, train=True):
         self.encodings = encodings
-        self.keys = ['input_ids', 'attention_mask']
+        self.keys = ['input_ids', 'attention_mask', 'dataset_ids']
         if train:
             self.keys += ['start_positions', 'end_positions']
         assert(all(key in self.encodings for key in self.keys))
@@ -30,9 +30,10 @@ def get_dataset(args, datasets, data_dir, tokenizer, split_name):
     datasets = datasets.split(',')
     dataset_dict = None
     dataset_name=''
-    for dataset in datasets:
+    for idx, dataset in enumerate(datasets):
         dataset_name += f'_{dataset}'
         dataset_dict_curr = read_squad(f'{data_dir}/{dataset}')
+        dataset_dict_curr['dataset_id'] = [idx] * len(dataset_dict_curr['question'])
         dataset_dict = util.merge(dataset_dict, dataset_dict_curr)
     data_encodings = read_and_process(args, tokenizer, dataset_dict, data_dir, dataset_name, split_name)
     return QADataset(data_encodings, train=(split_name=='train')), dataset_dict
@@ -54,18 +55,24 @@ def prepare_eval_data(dataset_dict, tokenizer):
     # For evaluation, we will need to convert our predictions to substrings of the context, so we keep the
     # corresponding example_id and we will store the offset mappings.
     tokenized_examples["id"] = []
+    tokenized_examples["dataset_ids"] = []
     for i in tqdm(range(len(tokenized_examples["input_ids"]))):
+        
         # Grab the sequence corresponding to that example (to know what is the context and what is the question).
         sequence_ids = tokenized_examples.sequence_ids(i)
+        
         # One example can give several spans, this is the index of the example containing this span of text.
         sample_index = sample_mapping[i]
         tokenized_examples["id"].append(dataset_dict["id"][sample_index])
+        
         # Set to None the offset_mapping that are not part of the context so it's easy to determine if a token
         # position is part of the context or not.
         tokenized_examples["offset_mapping"][i] = [
             (o if sequence_ids[k] == 1 else None)
             for k, o in enumerate(tokenized_examples["offset_mapping"][i])
         ]
+
+        tokenized_examples["dataset_ids"].append(dataset_dict['dataset_id'][sample_index])
 
     return tokenized_examples
 
@@ -87,6 +94,7 @@ def prepare_train_data(dataset_dict, tokenizer):
     tokenized_examples["start_positions"] = []
     tokenized_examples["end_positions"] = []
     tokenized_examples['id'] = []
+    tokenized_examples['dataset_ids'] = []
     inaccurate = 0
     for i, offsets in enumerate(tqdm(offset_mapping)):
         # We will label impossible answers with the index of the CLS token.
@@ -133,6 +141,8 @@ def prepare_train_data(dataset_dict, tokenizer):
             if context[offset_st : offset_en] != answer['text'][0]:
                 inaccurate += 1
 
+        tokenized_examples["dataset_ids"].append(dataset_dict['dataset_id'][sample_index])
+
     total = len(tokenized_examples['id'])
     print(f"Preprocessing not completely accurate for {inaccurate}/{total} instances")
     return tokenized_examples
@@ -141,6 +151,7 @@ def read_and_process(args, tokenizer, dataset_dict, dir_name, dataset_name, spli
     #TODO: cache this if possible
     cache_path = f'{dir_name}/{dataset_name}_encodings.pt'
     if os.path.exists(cache_path) and not args.recompute_features:
+        print(f'Loading encodings from {cache_path}')
         tokenized_examples = util.load_pickle(cache_path)
     else:
         if split=='train':
@@ -187,4 +198,9 @@ def read_squad(path):
             all_answers = [data_dict['answer'][idx] for idx in ex_ids]
             data_dict_collapsed['answer'].append({'answer_start': [answer['answer_start'] for answer in all_answers],
                                                   'text': [answer['text'] for answer in all_answers]})
+    
+        # DEBUG: To keep load times short
+        if len(data_dict_collapsed['id']) >= 100:
+            break
+
     return data_dict_collapsed

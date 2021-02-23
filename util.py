@@ -434,3 +434,16 @@ def kl_coef(i):
     # reaches 1 at i = 22000
     # https://github.com/kefirski/pytorch_RVAE/blob/master/utils/functional.py
     return (math.tanh((i - 3500) / 1000) + 1) / 2
+
+def one_hot_embedding(labels, num_classes):
+    """Embedding labels to one-hot form.
+
+    Args:
+      labels: (LongTensor) class labels, sized [N,].
+      num_classes: (int) number of classes.
+
+    Returns:
+      (tensor) encoded labels, sized [N, #classes].
+    """
+    y = torch.eye(num_classes) 
+    return y[labels] 
