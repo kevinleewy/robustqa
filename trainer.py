@@ -97,6 +97,7 @@ class Trainer():
         model.to(device)
         qa_optim = AdamW(model.parameters(), lr=self.lr)
         if self.adversarial:
+            self.discriminator.to(device)
             dis_optim = AdamW(self.discriminator.parameters(), lr=self.lr)
             dis_lambda = self.dis_lambda
         global_idx = 0
