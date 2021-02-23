@@ -15,7 +15,6 @@ from torch.utils.data.sampler import RandomSampler, SequentialSampler
 # Local imports
 from args import get_train_test_args
 from dataset import get_dataset
-from model import RobustQA
 from trainer import Trainer
 import util
 

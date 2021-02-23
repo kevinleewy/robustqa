@@ -200,7 +200,7 @@ def read_squad(path):
                                                   'text': [answer['text'] for answer in all_answers]})
     
         # DEBUG: To keep load times short
-        if len(data_dict_collapsed['id']) >= 100:
-            break
+        # if len(data_dict_collapsed['id']) >= 100:
+        #     break
 
     return data_dict_collapsed

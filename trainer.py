@@ -220,6 +220,8 @@ class Trainer():
                                            num_visuals=self.num_visuals)
                         if curr_score['F1'] >= best_scores['F1']:
                             best_scores = curr_score
+                            self.log.info(f'Achieved F1 score of {curr_score} at step {global_idx}. Saving model ...')
                             self.save(model)
+                            
                     global_idx += 1
         return best_scores
