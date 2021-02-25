@@ -13,23 +13,59 @@
 ### Baseline
 
 ```bash
-python train.py --do-train --run-name baesline
+python train.py --do-train --run-name baseline
 ```
 
 ### Adversarial
 
 ```bash
-python train.py --do-train --run-name adversarial --adversarial
+python train.py --do-train --run-name adversarial --adversarial --num-epochs 5
 ```
 
 ### Category
 
 ```bash
-python train.py --do-train --run-name baseline-cat0 --category during --load-dir save/baseline-01
+python train.py --do-train --run-name baseline-cat0 --category during --load-dir save/baseline-01 --num-epochs 10  --lr 1e-6 --eval-every 200
 ```
 
 ### Category + Adversarial
 
 ```bash
-python train.py --do-train --run-name adversarial-cat0 --adversarial --category during --load-dir save/adversarial-01
+python train.py --do-train --run-name adversarial-cat0 --adversarial --category during --load-dir save/adversarial-01 --num-epochs 10  --eval-every 2000
+```
+
+### Baseline + Finetune
+
+```bash
+python train.py --do-train --run-name baseline-finetune --load-dir save/baseline-01 --num-epochs 10 --lr 1e-6 --eval-every 200
+```
+
+## Validation
+
+### Standard (Per category + All categories)
+
+#### [Standard] Using Baseline model
+
+```bash
+python train.py --do-eval --sub-file mtl_submission_val.csv --save-dir save/baseline-01 --eval-dir datasets/oodomain_val
+```
+
+#### [Standard] Using Categorical model
+
+```bash
+python train.py --do-eval --sub-file mtl_submission_val.csv --save-dir save/baseline-cat0-01 --eval-dir datasets/oodomain_val
+```
+
+### Single Category
+
+#### [Single Category] Using Baseline model
+
+```bash
+python train.py --do-eval --sub-file mtl_submission_val_cat0.csv --save-dir save/baseline-01 --eval-dir datasets/oodomain_val --category during
+```
+
+#### [Single Category] Using Categorical model
+
+```bash
+python train.py --do-eval --sub-file mtl_submission_val_cat0.csv --save-dir save/baseline-cat0 --eval-dir datasets/oodomain_val --category during
 ```

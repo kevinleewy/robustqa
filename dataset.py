@@ -15,11 +15,14 @@ import util
 
 class QADataset(Dataset):
     def __init__(self, encodings, train=True):
+
         self.encodings = encodings
-        self.keys = ['input_ids', 'attention_mask', 'dataset_ids']
-        if train:
-            self.keys += ['start_positions', 'end_positions']
-        assert(all(key in self.encodings for key in self.keys))
+
+        if self.encodings.keys():
+            self.keys = ['input_ids', 'attention_mask', 'dataset_ids']
+            if train:
+                self.keys += ['start_positions', 'end_positions']
+            assert(all(key in self.encodings for key in self.keys))
 
     def __getitem__(self, idx):
         return {key : torch.tensor(self.encodings[key][idx]) for key in self.keys}
@@ -34,8 +37,9 @@ def get_dataset(args, datasets, data_dir, tokenizer, split_name, category='all')
     for idx, dataset in enumerate(datasets):
         dataset_name += f'_{dataset}'
         dataset_dict_curr = read_squad(f'{data_dir}/{dataset}', category)
-        dataset_dict_curr['dataset_id'] = [idx] * len(dataset_dict_curr['question'])
-        dataset_dict = util.merge(dataset_dict, dataset_dict_curr)
+        if len(dataset_dict_curr['question']) > 0:
+            dataset_dict_curr['dataset_id'] = [idx] * len(dataset_dict_curr['question'])
+            dataset_dict = util.merge(dataset_dict, dataset_dict_curr)
 
     if category != 'all':
         for id, c in enumerate(CATEGORIES):
@@ -43,6 +47,7 @@ def get_dataset(args, datasets, data_dir, tokenizer, split_name, category='all')
                 dataset_name += f'_cat{id}'
 
     data_encodings = read_and_process(args, tokenizer, dataset_dict, data_dir, dataset_name, split_name)
+
     return QADataset(data_encodings, train=(split_name=='train')), dataset_dict
 
 
@@ -155,6 +160,9 @@ def prepare_train_data(dataset_dict, tokenizer):
     return tokenized_examples
 
 def read_and_process(args, tokenizer, dataset_dict, dir_name, dataset_name, split):
+
+    if dataset_dict is None:
+        return {}
 
     #TODO: cache this if possible
     cache_path = f'{dir_name}/{dataset_name}_encodings.pt'

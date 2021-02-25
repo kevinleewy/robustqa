@@ -14,6 +14,7 @@ from torch.utils.data.sampler import RandomSampler, SequentialSampler
 
 # Local imports
 from args import get_train_test_args
+from categories import CATEGORIES
 from dataset import get_dataset
 from trainer import Trainer
 import util
@@ -34,8 +35,6 @@ def main():
             checkpoint_path = os.path.join(args.load_dir, 'checkpoint')
             model = DistilBertForQuestionAnswering.from_pretrained(checkpoint_path)
 
-        model = DistilBertForQuestionAnswering.from_pretrained("distilbert-base-uncased")
-
         if not os.path.exists(args.save_dir):
             os.makedirs(args.save_dir)
         args.save_dir = util.get_save_dir(args.save_dir, args.run_name)
@@ -51,19 +50,24 @@ def main():
         
         log.info("Preparing Validation Data...")
         val_dataset, val_dict = get_dataset(args, args.train_datasets, args.val_dir, tokenizer, 'val', args.category)
-        train_loader = DataLoader(train_dataset,
-                                batch_size=args.batch_size,
-                                sampler=RandomSampler(train_dataset))
-        val_loader = DataLoader(val_dataset,
-                                batch_size=args.batch_size,
-                                sampler=SequentialSampler(val_dataset))
-        best_scores = trainer.train(model, train_loader, val_loader, val_dict)
+        
+        if val_dict is None:
+            log.info("No data to be found...")
+        else:
+            train_loader = DataLoader(train_dataset,
+                                    batch_size=args.batch_size,
+                                    sampler=RandomSampler(train_dataset))
+            val_loader = DataLoader(val_dataset,
+                                    batch_size=args.batch_size,
+                                    sampler=SequentialSampler(val_dataset))
+            best_scores = trainer.train(model, train_loader, val_loader, val_dict)
 
     if args.do_eval:
         # Determine device
         args.device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
         split_name = 'test' if 'test' in args.eval_dir else 'validation'
+        
         log = util.get_logger(args.save_dir, f'log_{split_name}')
         trainer = Trainer(args, log)
         if args.load_dir is None:
@@ -71,23 +75,60 @@ def main():
         checkpoint_path = os.path.join(args.save_dir, 'checkpoint')
         model = DistilBertForQuestionAnswering.from_pretrained(checkpoint_path)
         model.to(args.device)
-        eval_dataset, eval_dict = get_dataset(args, args.eval_datasets, args.eval_dir, tokenizer, split_name)
-        eval_loader = DataLoader(eval_dataset,
-                                 batch_size=args.batch_size,
-                                 sampler=SequentialSampler(eval_dataset))
-        eval_preds, eval_scores = trainer.evaluate(model, eval_loader,
-                                                   eval_dict, return_preds=True,
-                                                   split=split_name)
-        results_str = ', '.join(f'{k}: {v:05.2f}' for k, v in eval_scores.items())
-        log.info(f'Eval {results_str}')
-        # Write submission file
-        sub_path = os.path.join(args.save_dir, split_name + '_' + args.sub_file)
-        log.info(f'Writing submission file to {sub_path}...')
-        with open(sub_path, 'w', newline='', encoding='utf-8') as csv_fh:
-            csv_writer = csv.writer(csv_fh, delimiter=',')
-            csv_writer.writerow(['Id', 'Predicted'])
-            for uuid in sorted(eval_preds):
-                csv_writer.writerow([uuid, eval_preds[uuid]])
+
+        if args.category == 'all':
+
+            for c in CATEGORIES + [{ 'name': 'all' }]:
+
+                category = c['name']
+
+                eval_dataset, eval_dict = get_dataset(args, args.eval_datasets, args.eval_dir, tokenizer, split_name, category)
+                
+                if eval_dict is None:
+                    log.info("No data to be found... Skipping this category")
+                    continue
+                
+                eval_loader = DataLoader(eval_dataset,
+                                        batch_size=args.batch_size,
+                                        sampler=SequentialSampler(eval_dataset))
+                eval_preds, eval_scores = trainer.evaluate(model, eval_loader,
+                                                        eval_dict, return_preds=True,
+                                                        split=split_name)
+                results_str = ', '.join(f'{k}: {v:05.2f}' for k, v in eval_scores.items())
+                log.info(f'Eval category={category} {results_str}')
+
+                if category == 'all':
+                    # Write submission file
+                    sub_path = os.path.join(args.save_dir, split_name + '_' + args.sub_file)
+                    log.info(f'Writing submission file to {sub_path}...')
+                    with open(sub_path, 'w', newline='', encoding='utf-8') as csv_fh:
+                        csv_writer = csv.writer(csv_fh, delimiter=',')
+                        csv_writer.writerow(['Id', 'Predicted'])
+                        for uuid in sorted(eval_preds):
+                            csv_writer.writerow([uuid, eval_preds[uuid]])
+
+        else:
+            eval_dataset, eval_dict = get_dataset(args, args.eval_datasets, args.eval_dir, tokenizer, split_name, args.category)
+            
+            if eval_dict is None:
+                log.info("No data to be found... Skipping this category")
+            else:
+                eval_loader = DataLoader(eval_dataset,
+                                        batch_size=args.batch_size,
+                                        sampler=SequentialSampler(eval_dataset))
+                eval_preds, eval_scores = trainer.evaluate(model, eval_loader,
+                                                        eval_dict, return_preds=True,
+                                                        split=split_name)
+                results_str = ', '.join(f'{k}: {v:05.2f}' for k, v in eval_scores.items())
+                log.info(f'Eval category={args.category} {results_str}')
+                # Write submission file
+                sub_path = os.path.join(args.save_dir, split_name + '_' + args.sub_file)
+                log.info(f'Writing submission file to {sub_path}...')
+                with open(sub_path, 'w', newline='', encoding='utf-8') as csv_fh:
+                    csv_writer = csv.writer(csv_fh, delimiter=',')
+                    csv_writer.writerow(['Id', 'Predicted'])
+                    for uuid in sorted(eval_preds):
+                        csv_writer.writerow([uuid, eval_preds[uuid]])
 
 
 if __name__ == '__main__':
