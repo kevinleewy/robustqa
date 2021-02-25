@@ -7,6 +7,7 @@ def get_train_test_args():
     parser.add_argument('--lr', type=float, default=3e-5)
     parser.add_argument('--num-visuals', type=int, default=10)
     parser.add_argument('--seed', type=int, default=42)
+    parser.add_argument('--load-dir', type=str, default=None)
     parser.add_argument('--save-dir', type=str, default='save/')
     parser.add_argument('--train', action='store_true')
     parser.add_argument('--eval', action='store_true')
@@ -32,5 +33,8 @@ def get_train_test_args():
     parser.add_argument("--anneal", action="store_true")
     parser.add_argument("--concat", action="store_true", help="Whether to use both cls and sep embedding")
     
+    # For categorical learning
+    parser.add_argument('--category', type=str, default='all')
+
     args = parser.parse_args()
     return args

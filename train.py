@@ -28,6 +28,12 @@ def main():
 
     if args.do_train:
 
+        if args.load_dir is None:
+            model = DistilBertForQuestionAnswering.from_pretrained("distilbert-base-uncased")
+        else:
+            checkpoint_path = os.path.join(args.load_dir, 'checkpoint')
+            model = DistilBertForQuestionAnswering.from_pretrained(checkpoint_path)
+
         model = DistilBertForQuestionAnswering.from_pretrained("distilbert-base-uncased")
 
         if not os.path.exists(args.save_dir):
@@ -41,10 +47,10 @@ def main():
         args.device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
         trainer = Trainer(args, log)
-        train_dataset, _ = get_dataset(args, args.train_datasets, args.train_dir, tokenizer, 'train')
+        train_dataset, _ = get_dataset(args, args.train_datasets, args.train_dir, tokenizer, 'train', args.category)
         
         log.info("Preparing Validation Data...")
-        val_dataset, val_dict = get_dataset(args, args.train_datasets, args.val_dir, tokenizer, 'val')
+        val_dataset, val_dict = get_dataset(args, args.train_datasets, args.val_dir, tokenizer, 'val', args.category)
         train_loader = DataLoader(train_dataset,
                                 batch_size=args.batch_size,
                                 sampler=RandomSampler(train_dataset))
@@ -60,6 +66,8 @@ def main():
         split_name = 'test' if 'test' in args.eval_dir else 'validation'
         log = util.get_logger(args.save_dir, f'log_{split_name}')
         trainer = Trainer(args, log)
+        if args.load_dir is None:
+            args.load_dir = args.save_dir
         checkpoint_path = os.path.join(args.save_dir, 'checkpoint')
         model = DistilBertForQuestionAnswering.from_pretrained(checkpoint_path)
         model.to(args.device)

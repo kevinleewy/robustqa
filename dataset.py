@@ -10,6 +10,7 @@ from torch.utils.data import Dataset
 from tqdm import tqdm
 
 # Local imports
+from categories import CATEGORIES, getCategoryIds
 import util
 
 class QADataset(Dataset):
@@ -26,15 +27,21 @@ class QADataset(Dataset):
     def __len__(self):
         return len(self.encodings['input_ids'])
 
-def get_dataset(args, datasets, data_dir, tokenizer, split_name):
+def get_dataset(args, datasets, data_dir, tokenizer, split_name, category='all'):
     datasets = datasets.split(',')
     dataset_dict = None
     dataset_name=''
     for idx, dataset in enumerate(datasets):
         dataset_name += f'_{dataset}'
-        dataset_dict_curr = read_squad(f'{data_dir}/{dataset}')
+        dataset_dict_curr = read_squad(f'{data_dir}/{dataset}', category)
         dataset_dict_curr['dataset_id'] = [idx] * len(dataset_dict_curr['question'])
         dataset_dict = util.merge(dataset_dict, dataset_dict_curr)
+
+    if category != 'all':
+        for id, c in enumerate(CATEGORIES):
+            if c['name'] == category:
+                dataset_name += f'_cat{id}'
+
     data_encodings = read_and_process(args, tokenizer, dataset_dict, data_dir, dataset_name, split_name)
     return QADataset(data_encodings, train=(split_name=='train')), dataset_dict
 
@@ -148,6 +155,7 @@ def prepare_train_data(dataset_dict, tokenizer):
     return tokenized_examples
 
 def read_and_process(args, tokenizer, dataset_dict, dir_name, dataset_name, split):
+
     #TODO: cache this if possible
     cache_path = f'{dir_name}/{dataset_name}_encodings.pt'
     if os.path.exists(cache_path) and not args.recompute_features:
@@ -158,11 +166,12 @@ def read_and_process(args, tokenizer, dataset_dict, dir_name, dataset_name, spli
             tokenized_examples = prepare_train_data(dataset_dict, tokenizer)
         else:
             tokenized_examples = prepare_eval_data(dataset_dict, tokenizer)
+        print(f'Caching encodings to {cache_path}')
         util.save_pickle(tokenized_examples, cache_path)
     return tokenized_examples
 
 
-def read_squad(path):
+def read_squad(path, category='all'):
     path = Path(path)
     with open(path, 'rb') as f:
         squad_dict = json.load(f)
@@ -172,12 +181,18 @@ def read_squad(path):
             context = passage['context']
             for qa in passage['qas']:
                 question = qa['question']
+
+                # Filter by category
+                if category != 'all':
+                    if category not in [CATEGORIES[id]['name'] for id in getCategoryIds(question)]:
+                        continue 
+
                 if len(qa['answers']) == 0:
                     data_dict['question'].append(question)
                     data_dict['context'].append(context)
                     data_dict['id'].append(qa['id'])
                 else:
-                    for answer in  qa['answers']:
+                    for answer in qa['answers']:
                         data_dict['question'].append(question)
                         data_dict['context'].append(context)
                         data_dict['id'].append(qa['id'])
@@ -204,3 +219,4 @@ def read_squad(path):
         #     break
 
     return data_dict_collapsed
+
