@@ -46,7 +46,7 @@ def main():
         args.device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
         trainer = Trainer(args, log)
-        train_dataset, _ = get_dataset(args, args.train_datasets, args.train_dir, tokenizer, 'train', args.category)
+        train_dataset, train_dict = get_dataset(args, args.train_datasets, args.train_dir, tokenizer, 'train', args.category)
         
         log.info("Preparing Validation Data...")
         val_dataset, val_dict = get_dataset(args, args.train_datasets, args.val_dir, tokenizer, 'val', args.category)
@@ -60,7 +60,7 @@ def main():
             val_loader = DataLoader(val_dataset,
                                     batch_size=args.batch_size,
                                     sampler=SequentialSampler(val_dataset))
-            best_scores = trainer.train(model, train_loader, val_loader, val_dict)
+            best_scores = trainer.train(model, train_loader, val_loader, train_dict, val_dict)
 
     if args.do_eval:
         # Determine device

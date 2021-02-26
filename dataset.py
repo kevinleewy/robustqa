@@ -39,7 +39,19 @@ def get_dataset(args, datasets, data_dir, tokenizer, split_name, category='all')
         dataset_dict_curr = read_squad(f'{data_dir}/{dataset}', category)
         if len(dataset_dict_curr['question']) > 0:
             dataset_dict_curr['dataset_id'] = [idx] * len(dataset_dict_curr['question'])
+            dataset_dict_curr['dataset_size'] = [len(dataset_dict_curr['question'])]
             dataset_dict = util.merge(dataset_dict, dataset_dict_curr)
+
+    # Appending finetune data
+    if args.do_finetune:
+        finetune_datasets = args.finetune_datasets.split(',')
+        for finetune_idx, dataset in enumerate(finetune_datasets):
+            dataset_name += f'_{dataset}'
+            dataset_dict_curr = read_squad(f'{args.finetune_dir}/{dataset}', category)
+            if len(dataset_dict_curr['question']) > 0:
+                dataset_dict_curr['dataset_id'] = [finetune_idx] * len(dataset_dict_curr['question'])
+                dataset_dict_curr['dataset_size'] = [len(dataset_dict_curr['question'])]
+                dataset_dict = util.merge(dataset_dict, dataset_dict_curr)
 
     if category != 'all':
         for id, c in enumerate(CATEGORIES):

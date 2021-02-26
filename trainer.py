@@ -28,7 +28,9 @@ class Trainer():
 
         # Adversarial training
         self.adversarial = args.adversarial
-        self.num_classes = len(args.train_datasets)
+        self.num_classes = len(args.train_datasets.split(','))
+        if args.do_finetune:
+            self.num_classes += len(args.finetune_datasets.split(','))
         self.dis_lambda = args.dis_lambda
         self.anneal = args.anneal
         self.concat = args.concat
@@ -92,7 +94,7 @@ class Trainer():
             return preds, results
         return results
 
-    def train(self, model, train_dataloader, eval_dataloader, val_dict):
+    def train(self, model, train_dataloader, eval_dataloader, train_dict, val_dict):
         device = self.device
         model.to(device)
         qa_optim = AdamW(model.parameters(), lr=self.lr)
@@ -100,6 +102,8 @@ class Trainer():
             self.discriminator.to(device)
             dis_optim = AdamW(self.discriminator.parameters(), lr=self.lr)
             dis_lambda = self.dis_lambda
+            dataset_weights = util.compute_imbalanced_class_weights(train_dict['dataset_size'], as_tensor=True)
+            assert dataset_weights.size(0) == self.num_classes
         global_idx = 0
         best_scores = {'F1': -1.0, 'EM': -1.0}
         tbx = SummaryWriter(self.save_dir)
@@ -185,7 +189,7 @@ class Trainer():
                         log_prob = self.discriminator(dis_input.detach())
 
                         # Compute discriminator loss
-                        criterion = nn.NLLLoss()
+                        criterion = nn.NLLLoss(weight=dataset_weights)
                         dis_loss = criterion(log_prob, dataset_ids)
                         
                         # Backprop discriminator

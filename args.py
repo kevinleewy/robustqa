@@ -32,9 +32,14 @@ def get_train_test_args():
     parser.add_argument("--dropout", default=0.1, type=float, help="Dropout for discriminator")
     parser.add_argument("--anneal", action="store_true")
     parser.add_argument("--concat", action="store_true", help="Whether to use both cls and sep embedding")
-    
+
     # For categorical learning
     parser.add_argument('--category', type=str, default='all')
+
+    # For finetuning
+    parser.add_argument('--do-finetune', action='store_true')
+    parser.add_argument('--finetune-dir', type=str, default='datasets/oodomain_train')
+    parser.add_argument('--finetune-datasets', type=str, default='race,relation_extraction,duorc')
 
     args = parser.parse_args()
     return args
