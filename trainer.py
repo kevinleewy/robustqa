@@ -95,6 +95,7 @@ class Trainer():
         return results
 
     def train(self, model, train_dataloader, eval_dataloader, train_dict, val_dict):
+        
         device = self.device
         model.to(device)
         qa_optim = AdamW(model.parameters(), lr=self.lr)
@@ -103,6 +104,7 @@ class Trainer():
             dis_optim = AdamW(self.discriminator.parameters(), lr=self.lr)
             dis_lambda = self.dis_lambda
             dataset_weights = util.compute_imbalanced_class_weights(train_dict['dataset_size'], as_tensor=True)
+            dataset_weights.to(device)
             assert dataset_weights.size(0) == self.num_classes
         global_idx = 0
         best_scores = {'F1': -1.0, 'EM': -1.0}
