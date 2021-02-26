@@ -191,7 +191,7 @@ class Trainer():
                         log_prob = self.discriminator(dis_input.detach())
 
                         # Compute discriminator loss
-                        criterion = nn.NLLLoss(weight=dataset_weights)
+                        criterion = nn.NLLLoss(weight=dataset_weights).to(device)
                         dis_loss = criterion(log_prob, dataset_ids)
                         
                         # Backprop discriminator
