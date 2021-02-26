@@ -94,7 +94,7 @@ class Trainer():
             return preds, results
         return results
 
-    def train(self, model, train_dataloader, eval_dataloader, train_dict, val_dict):
+    def train(self, model, train_dataloader, eval_dataloader, train_dataset_sizes, val_dict):
         
         device = self.device
         model.to(device)
@@ -103,7 +103,7 @@ class Trainer():
             self.discriminator.to(device)
             dis_optim = AdamW(self.discriminator.parameters(), lr=self.lr)
             dis_lambda = self.dis_lambda
-            dataset_weights = util.compute_imbalanced_class_weights(train_dict['dataset_size'], as_tensor=True)
+            dataset_weights = util.compute_imbalanced_class_weights(train_dataset_sizes, as_tensor=True)
             dataset_weights.to(device)
             assert dataset_weights.size(0) == self.num_classes
         global_idx = 0

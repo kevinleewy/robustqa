@@ -34,12 +34,13 @@ def get_dataset(args, datasets, data_dir, tokenizer, split_name, category='all')
     datasets = datasets.split(',')
     dataset_dict = None
     dataset_name=''
+    dataset_sizes = []
     for idx, dataset in enumerate(datasets):
         dataset_name += f'_{dataset}'
         dataset_dict_curr = read_squad(f'{data_dir}/{dataset}', category)
         if len(dataset_dict_curr['question']) > 0:
             dataset_dict_curr['dataset_id'] = [idx] * len(dataset_dict_curr['question'])
-            dataset_dict_curr['dataset_size'] = [len(dataset_dict_curr['question'])]
+            dataset_sizes.append(len(dataset_dict_curr['question']))
             dataset_dict = util.merge(dataset_dict, dataset_dict_curr)
 
     # Appending finetune data
@@ -50,7 +51,7 @@ def get_dataset(args, datasets, data_dir, tokenizer, split_name, category='all')
             dataset_dict_curr = read_squad(f'{args.finetune_dir}/{dataset}', category)
             if len(dataset_dict_curr['question']) > 0:
                 dataset_dict_curr['dataset_id'] = [finetune_idx] * len(dataset_dict_curr['question'])
-                dataset_dict_curr['dataset_size'] = [len(dataset_dict_curr['question'])]
+                dataset_sizes.append(len(dataset_dict_curr['question']))
                 dataset_dict = util.merge(dataset_dict, dataset_dict_curr)
 
     if category != 'all':
@@ -60,7 +61,7 @@ def get_dataset(args, datasets, data_dir, tokenizer, split_name, category='all')
 
     data_encodings = read_and_process(args, tokenizer, dataset_dict, data_dir, dataset_name, split_name)
 
-    return QADataset(data_encodings, train=(split_name=='train')), dataset_dict
+    return QADataset(data_encodings, train=(split_name=='train')), dataset_dict, dataset_sizes
 
 
 def prepare_eval_data(dataset_dict, tokenizer):

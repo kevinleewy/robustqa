@@ -46,10 +46,10 @@ def main():
         args.device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
         trainer = Trainer(args, log)
-        train_dataset, train_dict = get_dataset(args, args.train_datasets, args.train_dir, tokenizer, 'train', args.category)
+        train_dataset, _, train_dataset_sizes = get_dataset(args, args.train_datasets, args.train_dir, tokenizer, 'train', args.category)
         
         log.info("Preparing Validation Data...")
-        val_dataset, val_dict = get_dataset(args, args.train_datasets, args.val_dir, tokenizer, 'val', args.category)
+        val_dataset, val_dict, _ = get_dataset(args, args.train_datasets, args.val_dir, tokenizer, 'val', args.category)
         
         if val_dict is None:
             log.info("No data to be found...")
@@ -60,7 +60,7 @@ def main():
             val_loader = DataLoader(val_dataset,
                                     batch_size=args.batch_size,
                                     sampler=SequentialSampler(val_dataset))
-            best_scores = trainer.train(model, train_loader, val_loader, train_dict, val_dict)
+            best_scores = trainer.train(model, train_loader, val_loader, train_dataset_sizes, val_dict)
 
     if args.do_eval:
         # Determine device
@@ -82,7 +82,7 @@ def main():
 
                 category = c['name']
 
-                eval_dataset, eval_dict = get_dataset(args, args.eval_datasets, args.eval_dir, tokenizer, split_name, category)
+                eval_dataset, eval_dict, _ = get_dataset(args, args.eval_datasets, args.eval_dir, tokenizer, split_name, category)
                 
                 if eval_dict is None:
                     log.info("No data to be found... Skipping this category")
