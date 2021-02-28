@@ -85,8 +85,7 @@ def main():
 
         if args.category == 'all':
 
-            # for c in CATEGORIES + [{ 'name': 'all' }]:
-            for c in [{ 'name': 'all' }]:
+            for c in CATEGORIES + [{ 'name': 'all' }]:
 
                 category = c['name']
 
