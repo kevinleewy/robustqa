@@ -38,7 +38,11 @@ def main():
         if not os.path.exists(args.save_dir):
             os.makedirs(args.save_dir)
         args.save_dir = util.get_save_dir(args.save_dir, args.run_name)
-        log = util.get_logger(args.save_dir, 'log_train')
+
+        if args.log_file is None:
+            args.log_file = 'log_train'
+
+        log = util.get_logger(args.save_dir, args.log_file)
         log.info(f'Args: {json.dumps(vars(args), indent=4, sort_keys=True)}')
         log.info("Preparing Training Data...")
 
@@ -68,7 +72,10 @@ def main():
 
         split_name = 'test' if 'test' in args.eval_dir else 'validation'
         
-        log = util.get_logger(args.save_dir, f'log_{split_name}')
+        if args.log_file is None:
+            args.log_file = f'log_{split_name}'
+
+        log = util.get_logger(args.save_dir, args.log_file)
         trainer = Trainer(args, log)
         if args.load_dir is None:
             args.load_dir = args.save_dir
@@ -78,7 +85,8 @@ def main():
 
         if args.category == 'all':
 
-            for c in CATEGORIES + [{ 'name': 'all' }]:
+            # for c in CATEGORIES + [{ 'name': 'all' }]:
+            for c in [{ 'name': 'all' }]:
 
                 category = c['name']
 
