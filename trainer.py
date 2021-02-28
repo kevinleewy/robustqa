@@ -115,6 +115,8 @@ class Trainer():
             with torch.enable_grad(), tqdm(total=len(train_dataloader.dataset)) as progress_bar:
                 for batch in train_dataloader:
                     
+                    loss_dict = {}
+
                     # Zero out gradients
                     qa_optim.zero_grad()
                     if self.adversarial:
@@ -144,6 +146,8 @@ class Trainer():
                     # Compute QA Loss
                     qa_loss = outputs.loss
 
+                    loss_dict['qa_NLL'] = qa_loss.item()
+
                     if self.adversarial:
 
                         # (batch_size, hidden_size=768)
@@ -165,6 +169,9 @@ class Trainer():
                             dis_lambda *= util.kl_coef(global_idx)
                         adv_loss = dis_lambda * kl_criterion(log_prob, targets)
                         qa_loss += adv_loss
+
+                        loss_dict['adv_loss'] = adv_loss.item()
+                    loss_dict['qa_loss'] = qa_loss.item()
 
                     # Backprop
                     qa_loss.backward()
@@ -195,23 +202,20 @@ class Trainer():
                         criterion = nn.NLLLoss(weight=dataset_weights).to(device)
                         dis_loss = criterion(log_prob, dataset_ids)
                         
+                        loss_dict['D_loss'] = dis_loss.item()
+
                         # Backprop discriminator
                         dis_loss.backward()
                         dis_optim.step()
                         dis_optim.zero_grad()
 
+                    # Progress bar update
                     progress_bar.update(len(input_ids))
-                    
-                    if self.adversarial:
-                        progress_bar.set_postfix(epoch=epoch_num, NLL=qa_loss.item(), adv_loss=adv_loss.item(), D_Loss=dis_loss.item())
-                    else:
-                        progress_bar.set_postfix(epoch=epoch_num, NLL=qa_loss.item())
+                    progress_bar.set_postfix(epoch=epoch_num, **loss_dict)
                     
                     # TensorboardX update
-                    tbx.add_scalar('train/NLL', qa_loss.item(), global_idx)
-                    if self.adversarial:
-                        tbx.add_scalar('train/adv_Loss', adv_loss.item(), global_idx)
-                        tbx.add_scalar('train/D_Loss', dis_loss.item(), global_idx)
+                    for k, v in loss_dict.items():
+                        tbx.add_scalar(f'train/{k}', v, global_idx)
 
                     if (global_idx % self.eval_every) == 0:
                         self.log.info(f'Evaluating at step {global_idx}...')

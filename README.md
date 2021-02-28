@@ -19,7 +19,7 @@ python train.py --do-train --run-name baseline
 ### Adversarial
 
 ```bash
-python train.py --do-train --run-name adversarial --adversarial --num-epochs 5
+python train.py --do-train --run-name adversarial --adversarial --num-epochs 5 --batch-size 32 --visualize-predictions
 ```
 
 ### Category
@@ -40,10 +40,24 @@ python train.py --do-train --run-name adversarial-cat0 --adversarial --category 
 python train.py --do-train --run-name baseline-finetune --load-dir save/baseline-01 --num-epochs 10 --lr 1e-6 --eval-every 200
 ```
 
+### Adversarial + OOD only finetune
+
+```bash
+python train.py --do-train --run-name adv-ood-finetune --adversarial \
+    --load-dir save/adversarial-03 \
+    --num-epochs 5 --batch-size 32 \
+    --visualize-predictions
+```
+
 ### Adversarial + Finetune by Domain
 
 ```bash
-python train.py --do-train --do-finetune --run-name adv-finetune --adversarial --num-epochs 5
+python train.py --do-train --do-finetune \
+    --run-name adv-finetune \
+    --adversarial \
+    --num-epochs 5 \
+    --batch-size 32 \
+    --visualize-predictions
 ```
 
 ## Validation
