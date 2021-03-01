@@ -150,7 +150,9 @@ class Trainer():
 
                     if self.adversarial:
 
-                        # (batch_size, hidden_size=768)
+                        # cls_embedding: (batch_size, hidden_size=768)
+                        # outputs.hidden_states[-1] retrieves the last hidden layer
+                        # outputs.hidden_states[-1][:, 0, :] retrieves the first output of the last hidden layer
                         cls_embedding = outputs.hidden_states[-1][:, 0, :]
 
                         if self.concat:
@@ -186,7 +188,9 @@ class Trainer():
                                             start_positions=start_positions,
                                             end_positions=end_positions, output_hidden_states=True)
 
-                            # (batch_size, hidden_size=768)
+                            # cls_embedding: (batch_size, hidden_size=768)
+                            # outputs.hidden_states[-1] retrieves the last hidden layer
+                            # outputs.hidden_states[-1][:, 0, :] retrieves the first output of the last hidden layer
                             cls_embedding = outputs.hidden_states[-1][:, 0, :]
 
                             if self.concat:

@@ -44,7 +44,7 @@ def get_dataset(args, datasets, data_dir, tokenizer, split_name, category='all')
             dataset_dict = util.merge(dataset_dict, dataset_dict_curr)
 
     # Appending finetune data
-    if args.do_finetune:
+    if args.do_train and args.do_finetune:
         finetune_datasets = args.finetune_datasets.split(',')
         for finetune_idx, dataset in enumerate(finetune_datasets):
             dataset_name += f'_{dataset}'
@@ -54,6 +54,7 @@ def get_dataset(args, datasets, data_dir, tokenizer, split_name, category='all')
                 dataset_sizes.append(len(dataset_dict_curr['question']))
                 dataset_dict = util.merge(dataset_dict, dataset_dict_curr)
 
+    # Get dataset name
     if category != 'all':
         for id, c in enumerate(CATEGORIES):
             if c['name'] == category:
@@ -182,6 +183,7 @@ def read_and_process(args, tokenizer, dataset_dict, dir_name, dataset_name, spli
     if os.path.exists(cache_path) and not args.recompute_features:
         print(f'Loading encodings from {cache_path}')
         tokenized_examples = util.load_pickle(cache_path)
+        print('Loaded.')
     else:
         if split=='train':
             tokenized_examples = prepare_train_data(dataset_dict, tokenizer)
@@ -189,6 +191,7 @@ def read_and_process(args, tokenizer, dataset_dict, dir_name, dataset_name, spli
             tokenized_examples = prepare_eval_data(dataset_dict, tokenizer)
         print(f'Caching encodings to {cache_path}')
         util.save_pickle(tokenized_examples, cache_path)
+        print('Cached.')
     return tokenized_examples
 
 
@@ -234,10 +237,6 @@ def read_squad(path, category='all'):
             all_answers = [data_dict['answer'][idx] for idx in ex_ids]
             data_dict_collapsed['answer'].append({'answer_start': [answer['answer_start'] for answer in all_answers],
                                                   'text': [answer['text'] for answer in all_answers]})
-    
-        # DEBUG: To keep load times short
-        # if len(data_dict_collapsed['id']) >= 100:
-        #     break
 
     return data_dict_collapsed
 

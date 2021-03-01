@@ -55,7 +55,8 @@ python train.py --do-train --run-name adv-ood-finetune --adversarial \
 python train.py --do-train --do-finetune \
     --run-name adv-finetune \
     --adversarial \
-    --num-epochs 5 \
+    --dis_lambda 0.1 \
+    --num-epochs 10 \
     --batch-size 32 \
     --visualize-predictions
 ```
