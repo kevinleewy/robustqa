@@ -2,6 +2,7 @@
 import csv
 import json
 import os
+import re
 
 # 3rd Party imports
 from transformers import DistilBertTokenizerFast
@@ -16,6 +17,7 @@ from torch.utils.data.sampler import RandomSampler, SequentialSampler
 from args import get_train_test_args
 from categories import CATEGORIES
 from dataset import get_dataset
+from model import Ensemble
 from trainer import Trainer
 import util
 
@@ -71,63 +73,89 @@ def main():
         args.device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
         split_name = 'test' if 'test' in args.eval_dir else 'validation'
-        
-        if args.log_file is None:
-            args.log_file = f'log_{split_name}'
 
-        log = util.get_logger(args.save_dir, args.log_file)
-        trainer = Trainer(args, log)
-        if args.load_dir is None:
-            args.load_dir = args.save_dir
-        checkpoint_path = os.path.join(args.save_dir, 'checkpoint')
-        model = DistilBertForQuestionAnswering.from_pretrained(checkpoint_path)
-        model.to(args.device)
+        if args.do_ensemble:
+
+            if not os.path.exists(args.save_dir):
+                os.makedirs(args.save_dir)
+            args.save_dir = util.get_save_dir(args.save_dir, args.run_name)
+
+            if args.log_file is None:
+                args.log_file = f'log_{split_name}'
+
+            log = util.get_logger(args.save_dir, args.log_file)
+            trainer = Trainer(args, log)
+
+            # Read list of models to construct ensemble
+            checkpoints = []
+            with open(args.ensemble_cfg) as f:
+                for line in f:
+                    if line.startswith('#') or line.startswith('//'):
+                        continue
+                    checkpoints.append(line.strip())
+
+            model = Ensemble(device=args.device)
+
+            # Load each model and their respective weights
+            for cp in checkpoints:
+                log.info(f'Loading from {cp}')
+                checkpoint_path = os.path.join(cp, 'checkpoint')
+                val_log_path = os.path.join(cp, 'log_indomain_validation.txt')
+                weights = []
+                with open(val_log_path) as f:
+                    for line in f:
+                        entries = re.findall(r'Eval category=(.*) F1: ([0-9\.]+),', line)
+                        if len(entries) == 1 and len(entries[0]) == 2:
+                            category, weight = entries[0][0], entries[0][1]
+                            if category != 'all':
+                                weights.append(float(weight))
+
+                assert len(weights) == len(CATEGORIES)
+
+                model.add_pretrained_model(checkpoint_path, weights)
+
+        else:
+
+            if args.log_file is None:
+                args.log_file = f'log_{split_name}'
+
+            log = util.get_logger(args.save_dir, args.log_file)
+            trainer = Trainer(args, log)
+
+            if args.load_dir is None:
+                args.load_dir = args.save_dir
+            checkpoint_path = os.path.join(args.save_dir, 'checkpoint')
+            model = DistilBertForQuestionAnswering.from_pretrained(checkpoint_path)
+            model.to(args.device)
 
         if args.category == 'all':
 
-            for c in CATEGORIES + [{ 'name': 'all' }]:
-
-                category = c['name']
-
-                eval_dataset, eval_dict, _ = get_dataset(args, args.eval_datasets, args.eval_dir, tokenizer, split_name, category)
-                
-                if eval_dict is None:
-                    log.info("No data to be found... Skipping this category")
-                    continue
-                
-                eval_loader = DataLoader(eval_dataset,
-                                        batch_size=args.batch_size,
-                                        sampler=SequentialSampler(eval_dataset))
-                eval_preds, eval_scores = trainer.evaluate(model, eval_loader,
-                                                        eval_dict, return_preds=True,
-                                                        split=split_name)
-                results_str = ', '.join(f'{k}: {v:05.2f}' for k, v in eval_scores.items())
-                log.info(f'Eval category={category} {results_str}')
-
-                if category == 'all':
-                    # Write submission file
-                    sub_path = os.path.join(args.save_dir, split_name + '_' + args.sub_file)
-                    log.info(f'Writing submission file to {sub_path}...')
-                    with open(sub_path, 'w', newline='', encoding='utf-8') as csv_fh:
-                        csv_writer = csv.writer(csv_fh, delimiter=',')
-                        csv_writer.writerow(['Id', 'Predicted'])
-                        for uuid in sorted(eval_preds):
-                            csv_writer.writerow([uuid, eval_preds[uuid]])
+            if split_name == 'test':
+                categories = ['all']
+            else:
+                categories = [c['name'] for c in CATEGORIES] + ['all']
 
         else:
-            eval_dataset, eval_dict = get_dataset(args, args.eval_datasets, args.eval_dir, tokenizer, split_name, args.category)
+            categories = [args.category]
+
+        for category in categories:
+
+            eval_dataset, eval_dict, _ = get_dataset(args, args.eval_datasets, args.eval_dir, tokenizer, split_name, category)
             
             if eval_dict is None:
                 log.info("No data to be found... Skipping this category")
-            else:
-                eval_loader = DataLoader(eval_dataset,
-                                        batch_size=args.batch_size,
-                                        sampler=SequentialSampler(eval_dataset))
-                eval_preds, eval_scores = trainer.evaluate(model, eval_loader,
-                                                        eval_dict, return_preds=True,
-                                                        split=split_name)
-                results_str = ', '.join(f'{k}: {v:05.2f}' for k, v in eval_scores.items())
-                log.info(f'Eval category={args.category} {results_str}')
+                continue
+            
+            eval_loader = DataLoader(eval_dataset,
+                                    batch_size=args.batch_size,
+                                    sampler=SequentialSampler(eval_dataset))
+            eval_preds, eval_scores = trainer.evaluate(model, eval_loader,
+                                                    eval_dict, return_preds=True,
+                                                    split=split_name)
+            results_str = ', '.join(f'{k}: {v:05.2f}' for k, v in eval_scores.items())
+            log.info(f'Eval category={category} {results_str}')
+
+            if category == 'all':
                 # Write submission file
                 sub_path = os.path.join(args.save_dir, split_name + '_' + args.sub_file)
                 log.info(f'Writing submission file to {sub_path}...')

@@ -1,0 +1,5 @@
+//save/adversarial-02
+save/adversarial-03
+save/adv-finetune-02-02
+save/baseline-01
+save/baseline-finetune-01-02

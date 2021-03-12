@@ -10,6 +10,7 @@ import torch.nn as nn
 from tqdm import tqdm
 
 # Local imports
+from categories import getCategoryIds
 from model import Discriminator
 import util
 
@@ -41,6 +42,9 @@ class Trainer():
             else:
                 input_size = args.hidden_size
             self.discriminator = Discriminator(self.num_classes, input_size, args.hidden_size, args.num_layers, args.dropout)
+
+        # Ensemble
+        self.do_ensemble = args.do_ensemble
 
         if not os.path.exists(self.path):
             os.makedirs(self.path)
@@ -79,9 +83,68 @@ class Trainer():
         # Get F1 and EM scores
         start_logits = torch.cat(all_start_logits).cpu().numpy()
         end_logits = torch.cat(all_end_logits).cpu().numpy()
-        preds = util.postprocess_qa_predictions(data_dict,
+
+        if self.do_ensemble:
+
+            preds = OrderedDict()
+            
+            for i in range(len(model.models)):
+
+                preds_i = util.postprocess_qa_predictions(data_dict,
+                                                    data_loader.dataset.encodings,
+                                                    (start_logits[:, i, :], end_logits[:, i, :]))
+
+                for k, v in preds_i.items():
+                    if k not in preds:
+                        preds[k] = []
+                    preds[k].append(v)
+
+            id2index = {curr_id : idx for idx, curr_id in enumerate(data_dict['id'])}
+
+            for id, answers in preds.items():
+
+                # Retrieve question category/class
+                index = id2index[id]
+                question = data_dict['question'][index]
+                # print('debug:', id, question, answers)
+                # if 'answer' in data_dict:
+                #     print('debug:', data_dict['answer'][index]['text'])
+                categoryIds = getCategoryIds(question)
+                # print('debug:', categoryIds)
+
+                # Calculate weight for each answer
+                candidate_answers = {}
+                for modelIdx, answer in enumerate(answers):
+                    if answer not in candidate_answers:
+                        candidate_answers[answer] = 0.0
+
+                    for cid in categoryIds:
+                        candidate_answers[answer] += model.weights[modelIdx][cid]
+
+                # print('debug:', candidate_answers)
+
+                # Convert to list of tuples
+                candidate_answers = [(a, w) for a, w in candidate_answers.items()]
+
+                # print('debug:', candidate_answers)
+
+                # Sort answers by weight
+                candidate_answers = sorted(candidate_answers, key=lambda x: x[1], reverse=True)
+
+                # print('debug:', candidate_answers)
+                
+                # Select best answer
+                preds[id] = candidate_answers[0][0]
+
+            # print('debug:', preds)
+
+
+
+        else:
+            preds = util.postprocess_qa_predictions(data_dict,
                                                  data_loader.dataset.encodings,
                                                  (start_logits, end_logits))
+        
         if split == 'validation':
             results = util.eval_dicts(data_dict, preds)
             results_list = [('F1', results['F1']),

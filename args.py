@@ -42,5 +42,9 @@ def get_train_test_args():
     parser.add_argument('--finetune-dir', type=str, default='datasets/oodomain_train')
     parser.add_argument('--finetune-datasets', type=str, default='race,relation_extraction,duorc')
 
+    # For ensemble
+    parser.add_argument('--do-ensemble', action='store_true')
+    parser.add_argument('--ensemble-cfg', type=str, default='./ensemble.txt')
+
     args = parser.parse_args()
     return args

@@ -49,6 +49,17 @@ python train.py --do-train --run-name adv-ood-finetune --adversarial \
     --visualize-predictions
 ```
 
+### Baseline + Finetune by Domain
+
+```bash
+python train.py --do-train --do-finetune \
+    --run-name baseline-finetune \
+    --dis_lambda 0.1 \
+    --num-epochs 5 \
+    --batch-size 32 \
+    --visualize-predictions
+```
+
 ### Adversarial + Finetune by Domain
 
 ```bash
@@ -89,4 +100,10 @@ python train.py --do-eval --sub-file mtl_submission_val_cat0.csv --save-dir save
 
 ```bash
 python train.py --do-eval --sub-file mtl_submission_val_cat0.csv --save-dir save/baseline-cat0 --eval-dir datasets/oodomain_val --category during
+```
+
+### Ensemble
+
+```bash
+python train.py --do-eval --do-ensemble --sub-file mtl_submission_val.csv --run-name ensemble --log-file ensemble --eval-dir datasets/oodomain_val
 ```
