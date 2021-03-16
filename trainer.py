@@ -106,11 +106,8 @@ class Trainer():
                 # Retrieve question category/class
                 index = id2index[id]
                 question = data_dict['question'][index]
-                # print('debug:', id, question, answers)
-                # if 'answer' in data_dict:
-                #     print('debug:', data_dict['answer'][index]['text'])
+
                 categoryIds = getCategoryIds(question)
-                # print('debug:', categoryIds)
 
                 # Calculate weight for each answer
                 candidate_answers = {}
@@ -121,23 +118,14 @@ class Trainer():
                     for cid in categoryIds:
                         candidate_answers[answer] += model.weights[modelIdx][cid]
 
-                # print('debug:', candidate_answers)
-
                 # Convert to list of tuples
                 candidate_answers = [(a, w) for a, w in candidate_answers.items()]
 
-                # print('debug:', candidate_answers)
-
                 # Sort answers by weight
                 candidate_answers = sorted(candidate_answers, key=lambda x: x[1], reverse=True)
-
-                # print('debug:', candidate_answers)
                 
                 # Select best answer
                 preds[id] = candidate_answers[0][0]
-
-            # print('debug:', preds)
-
 
 
         else:
